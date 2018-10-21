@@ -80,7 +80,7 @@ bool sort_priority_list_less_func(const struct list_elem *a,
 {
   int64_t priority_a = list_entry(a, struct thread, elem)->priority;
   int64_t priority_b = list_entry(b, struct thread, elem)->priority;
-  return priority_a >= priority_b ? true : false;
+  return priority_a > priority_b ? true : false;
 }
 
 

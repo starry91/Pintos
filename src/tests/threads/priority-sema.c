@@ -22,9 +22,11 @@ test_priority_sema (void)
 
   sema_init (&sema, 0);
   thread_set_priority (PRI_MIN);
+  //printf("min priority: %d\n", PRI_MIN);
   for (i = 0; i < 10; i++) 
     {
       int priority = PRI_DEFAULT - (i + 3) % 10 - 1;
+	//printf("for i = %d, prioirty = %d\n", i, priority);
       char name[16];
       snprintf (name, sizeof name, "priority %d", priority);
       thread_create (name, priority, priority_sema_thread, NULL);
@@ -40,6 +42,7 @@ test_priority_sema (void)
 static void
 priority_sema_thread (void *aux UNUSED) 
 {
+  //printf("Entered sema %s\n", thread_name());
   sema_down (&sema);
   msg ("Thread %s woke up.", thread_name ());
 }

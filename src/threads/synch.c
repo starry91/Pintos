@@ -118,6 +118,7 @@ void
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -264,6 +265,31 @@ cond_init (struct condition *cond)
   list_init (&cond->waiters);
 }
 
+static bool
+cond_semaphore_elem_comparator(const struct list_elem *a,
+                                const struct list_elem *b,
+                                void *aux)
+{
+    struct semaphore* sem_a = &list_entry (a, struct semaphore_elem, elem)->semaphore;
+    struct semaphore* sem_b = &list_entry (b, struct semaphore_elem, elem)->semaphore;
+    struct thread* thread_a;
+    struct thread* thread_b;
+    if(list_empty(&sem_a->waiters)) {
+      thread_a = aux;
+      thread_b = list_entry (list_front (&sem_b->waiters), struct thread, elem);      
+    }
+    else if(list_empty(&sem_b->waiters)) {
+      thread_a = list_entry (list_front (&sem_a->waiters), struct thread, elem);
+      thread_b = aux;      
+    }
+    else {
+      thread_a = list_entry (list_front (&sem_a->waiters), struct thread, elem);
+      thread_b = list_entry (list_front (&sem_b->waiters), struct thread, elem);
+    }
+
+    return (thread_a->priority > thread_b->priority) ? true : false;
+}
+
 /* Atomically releases LOCK and waits for COND to be signaled by
    some other piece of code.  After COND is signaled, LOCK is
    reacquired before returning.  LOCK must be held before calling
@@ -295,7 +321,19 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_insert_ordered (&cond->waiters, &waiter.elem, sort_priority_list_less_func, NULL);
+  //waiter.elem = thread_current ()->elem;
+  //printf("Inserting into cv waiters queue for thread: %s\n",thread_name ()); //by praveen
+  list_insert_ordered (&cond->waiters, &waiter.elem,cond_semaphore_elem_comparator,thread_current());
+  // struct list_elem* e;
+  // printf("Waiter queue order:\n");
+  // int i = 0;
+  //  for (e = list_begin (&cond->waiters); e != list_end (&cond->waiters); e = list_next (e))
+  //    {
+  //      printf("i = %d\n",i);
+  //      printf("%s ",list_entry(e, struct thread, elem)->name);
+  //      i++;
+  //    }
+  //    printf("\n");
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -316,7 +354,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
+  if (!list_empty (&cond->waiters))  
     sema_up (&list_entry (list_pop_front (&cond->waiters),
                           struct semaphore_elem, elem)->semaphore);
 }
