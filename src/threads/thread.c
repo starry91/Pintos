@@ -27,7 +27,13 @@ static struct list ready_list;
 
 
 /* ready queue list for mlfqs scheduler - by praveen*/
-static struct list mlfqs_ready_list[PRI_LEVEL_COUNT];
+struct mlfqs_ready_queue
+{
+  struct list pri_ready_list[PRI_LEVEL_COUNT];
+  int ready_count;
+};
+
+static struct mlfqs_ready_queue mlfqs_ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -76,6 +82,12 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/*----------------------------------------------------------Additions by praveen balireddy --------------------*/
+
+/* system wide load average - by praveen */
+static int load_avg;
+
+
 /*comparator for sorting ready queue based on priority of thread - by praveen*/
 
 bool sort_priority_list_less_func(const struct list_elem *a,
@@ -87,7 +99,36 @@ bool sort_priority_list_less_func(const struct list_elem *a,
   return priority_a > priority_b ? true : false;
 }
 
+/* initializing load average - by praveen balireddy */
+void
+load_avg_init(void)
+{
+  load_avg = 0;
+}
 
+
+void mlfqs_ready_queue_init()
+{
+  for(int i = 0; i < PRI_LEVEL_COUNT; i++)
+  {
+    list_init(&mlfqs_ready_list.pri_ready_list[i]);
+  }
+  mlfqs_ready_list.ready_count = 1;
+}
+
+void update_recent_cpu(struct thread* t, void *aux)
+{
+  t->recent_cpu = (2* load_avg )/(2* load_avg + 1) * t->recent_cpu + t->nice;
+}
+
+void update_priority(struct thread* t, void *aux)
+{
+  update_recent_cpu(t, aux);
+  t->priority = PRI_MAX - (t->recent_cpu/4) - (t->nice/2);
+}
+
+
+/*----------------------------------------------------------end of additions by praveen balireddy --------------------*/
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -108,8 +149,20 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
+
+  if(thread_mlfqs) {
+    /* load avg init - by praveen balireddy */
+    load_avg_init();
+
+    /*mlfqs ready list init - by praveen balireddy */
+    mlfqs_ready_queue_init();
+  }
+  else {
+    list_init (&ready_list);
+  }
+
   list_init (&all_list);
+
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -257,7 +310,16 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, sort_priority_list_less_func, NULL);
+
+  if(thread_mlfqs) {
+    /* pushing into mlfqs ready queue*/
+    list_push_back(&mlfqs_ready_list.pri_ready_list[t->priority],&t->elem);
+  }
+  else {
+    list_insert_ordered (&ready_list, &t->elem, sort_priority_list_less_func, NULL);
+  }
+
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -328,7 +390,16 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem,sort_priority_list_less_func, NULL);
+  {
+    if(thread_mlfqs) {
+    /* pushing into mlfqs ready queue*/
+      list_push_back(&mlfqs_ready_list.pri_ready_list[cur->priority],&cur->elem);
+    }
+    else {
+      /* pushing into priority queue */
+      list_insert_ordered (&ready_list, &cur->elem,sort_priority_list_less_func, NULL);
+    }    
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -355,11 +426,14 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  if(!list_empty(&ready_list)) {
-    struct thread * e_front = list_entry(list_front(&ready_list), struct thread, elem); 
-    if(e_front->priority > thread_get_priority()) {
-      thread_yield();
+  if(!thread_mlfqs) {
+    /* update only when running in priority mode - by praveen balireddy */
+    thread_current ()->priority = new_priority;
+    if(!list_empty(&ready_list)) {
+      struct thread * e_front = list_entry(list_front(&ready_list), struct thread, elem); 
+      if(e_front->priority > thread_get_priority()) {
+        thread_yield();
+      }
     }
   }
 }
@@ -375,23 +449,30 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  /* changed by praveen balireddy */
+  thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  /* by - praveen balireddy */
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  /* update the arithematic - by praveen balireddy*/
+  return load_avg*100;
+}
+
+void update_load_avg()
+{
+  /* update the arithematic - by praveen balireddy */
+  load_avg = (59/60)*load_avg + (1/60)*mlfqs_ready_list.ready_count;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -518,10 +599,29 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    if(thread_mlfqs) {
+    /* picking the highest priority thread from mlfqs ready queue*/
+      for (int i = PRI_MAX; i >=0; i++)
+      {
+        if(list_empty(&mlfqs_ready_list.pri_ready_list[i]))
+        {
+          continue;
+        }
+        else
+        {
+          return list_entry (list_pop_front (&mlfqs_ready_list.pri_ready_list[i]), struct thread, elem);
+        }
+      }
+      return idle_thread;
+    }
+    else 
+    {
+      /* for priority scheduling */
+      if (list_empty (&ready_list))
+        return idle_thread;
+      else      
+        return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    }  
 }
 
 /* Completes a thread switch by activating the new thread's page

@@ -134,6 +134,10 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+/* by praveen balireddy */
+thread_action_func update_recent_cpu;
+thread_action_func update_priority;
+
 int thread_get_priority (void);
 void thread_set_priority (int);
 
@@ -141,6 +145,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/* update system load_avg - by praveen balireddy */
+void update_load_avg();
+// void update_recent_cpu(struct thread*);
 
 bool sort_priority_list_less_func(const struct list_elem *a,
                                 const struct list_elem *b,

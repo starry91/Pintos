@@ -213,6 +213,17 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  /* Occurs every second - by praveen balireddy */
+  if(timer_ticks()% TIMER_FREQ == 0) {
+    update_load_avg();
+    thread_foreach(update_priority, NULL); 
+  }
+  else {
+    update_recent_cpu(thread_current(), NULL);
+  }
+
+  /* if sleep queue not empty, unblock the one with the highest priority(for priority schduling) - by praveen balireddy */
   if(!list_empty(&sleep_queue)) {
     struct sleep_queue_elem * e = list_entry(list_front(&sleep_queue), struct sleep_queue_elem, elem); 
     while(ticks >= e->wake_tick) {
