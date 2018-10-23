@@ -5,6 +5,20 @@
 #include <list.h>
 #include <stdint.h>
 
+
+#define Q_FP 1<<14
+
+int convert_to_fp(int x);
+int add_fp(int x, int y);
+int multiply_fp(int x, int y);
+int divide_fp(int x, int y);
+int convert_to_int(int x);
+int convert_to_int_round(int x);
+
+
+
+
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -137,6 +151,7 @@ void thread_foreach (thread_action_func *, void *);
 /* by praveen balireddy */
 thread_action_func update_recent_cpu;
 thread_action_func update_priority;
+thread_action_func update_recent_cpu_and_priority;
 
 int thread_get_priority (void);
 void thread_set_priority (int);
@@ -148,10 +163,22 @@ int thread_get_load_avg (void);
 
 /* update system load_avg - by praveen balireddy */
 void update_load_avg();
-// void update_recent_cpu(struct thread*);
+
+/*update recent cpu */
+void update_recent_cpu(struct thread* t, void *aux);
+
+/* increment recent cpu */
+void increment_recent_cpu(struct thread* t);
+
 
 bool sort_priority_list_less_func(const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux);
+
+bool sort_priority_list_after_func(const struct list_elem *a,
+                                const struct list_elem *b,
+                                void *aux);
+
+void sort_ready_list();                               
 
 #endif /* threads/thread.h */

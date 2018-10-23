@@ -7,6 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+// #include "threads/utils.h"
 #include "lib/kernel/list.h"
   
 /* See [8254] for hardware details of the 8254 timer chip. */
@@ -214,13 +215,21 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
 
-  /* Occurs every second - by praveen balireddy */
-  if(timer_ticks()% TIMER_FREQ == 0) {
-    update_load_avg();
-    thread_foreach(update_priority, NULL); 
-  }
-  else {
-    update_recent_cpu(thread_current(), NULL);
+  /* for mlfqs - by praveen balireddy */
+  if(thread_mlfqs) {
+    /* increment recent cpu at every tick */
+    increment_recent_cpu(thread_current());
+
+    /* Occurs every second - by praveen balireddy */
+    if(timer_ticks()% TIMER_FREQ == 0) {
+      update_load_avg();
+      thread_foreach(update_recent_cpu, NULL); 
+    }
+    if(timer_ticks()% 4 == 3)
+    {
+      thread_foreach(update_priority, NULL);
+      sort_ready_list();
+    }
   }
 
   /* if sleep queue not empty, unblock the one with the highest priority(for priority schduling) - by praveen balireddy */

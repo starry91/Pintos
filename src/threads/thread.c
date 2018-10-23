@@ -11,10 +11,43 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+// #include "threads/utils.h"
 #include "lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+
+
+int convert_to_fp(int x)
+{
+    return ((x)*(Q_FP));
+}
+
+int multiply_fp(int x, int y)
+{
+    return ((int64_t)(x)) * (y) / (Q_FP);
+}
+
+int divide_fp(int x, int y)
+{
+    return ((int64_t)(x)) * (Q_FP) / (y);
+}
+
+int convert_to_int_round(int x)
+{
+  if(x >= 0)
+  {
+    return (x + ((Q_FP)/2))/(Q_FP);
+  }
+  else
+  {
+    return (x - ((Q_FP)/2))/(Q_FP);
+  }
+}
+
+
+
+
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -24,16 +57,6 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
-
-/* ready queue list for mlfqs scheduler - by praveen*/
-struct mlfqs_ready_queue
-{
-  struct list pri_ready_list[PRI_LEVEL_COUNT];
-  int ready_count;
-};
-
-static struct mlfqs_ready_queue mlfqs_ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -99,35 +122,48 @@ bool sort_priority_list_less_func(const struct list_elem *a,
   return priority_a > priority_b ? true : false;
 }
 
+bool sort_priority_list_after_func(const struct list_elem *a,
+                                const struct list_elem *b,
+                                void *aux)
+{
+  int64_t priority_a = list_entry(a, struct thread, elem)->priority;
+  int64_t priority_b = list_entry(b, struct thread, elem)->priority;
+  return priority_a >= priority_b ? true : false;
+}
+
 /* initializing load average - by praveen balireddy */
 void
 load_avg_init(void)
 {
-  load_avg = 0;
+  load_avg = convert_to_fp(0);
 }
 
-
-void mlfqs_ready_queue_init()
+void increment_recent_cpu(struct thread* t)
 {
-  for(int i = 0; i < PRI_LEVEL_COUNT; i++)
-  {
-    list_init(&mlfqs_ready_list.pri_ready_list[i]);
-  }
-  mlfqs_ready_list.ready_count = 1;
+  if(t != idle_thread)
+    t->recent_cpu = t->recent_cpu + convert_to_fp(1);
 }
 
 void update_recent_cpu(struct thread* t, void *aux)
 {
-  t->recent_cpu = (2* load_avg )/(2* load_avg + 1) * t->recent_cpu + t->nice;
+  t->recent_cpu = multiply_fp(divide_fp(2* load_avg,2*load_avg + convert_to_fp(1)),t->recent_cpu) + convert_to_fp(t->nice);
+}
+
+void update_recent_cpu_and_priority(struct thread* t, void *aux)
+{
+  update_recent_cpu(t, aux);
+  t->priority = PRI_MAX - convert_to_int_round(t->recent_cpu/4) - (t->nice/2);
 }
 
 void update_priority(struct thread* t, void *aux)
 {
-  update_recent_cpu(t, aux);
-  t->priority = PRI_MAX - (t->recent_cpu/4) - (t->nice/2);
+  t->priority = PRI_MAX - convert_to_int_round(t->recent_cpu/4) - (t->nice/2);
 }
 
-
+void sort_ready_list()
+{
+  list_sort(&ready_list,sort_priority_list_less_func,NULL);
+}
 /*----------------------------------------------------------end of additions by praveen balireddy --------------------*/
 
 /* Initializes the threading system by transforming the code
@@ -153,13 +189,8 @@ thread_init (void)
   if(thread_mlfqs) {
     /* load avg init - by praveen balireddy */
     load_avg_init();
-
-    /*mlfqs ready list init - by praveen balireddy */
-    mlfqs_ready_queue_init();
   }
-  else {
-    list_init (&ready_list);
-  }
+  list_init (&ready_list);
 
   list_init (&all_list);
 
@@ -311,14 +342,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
 
-  if(thread_mlfqs) {
-    /* pushing into mlfqs ready queue*/
-    list_push_back(&mlfqs_ready_list.pri_ready_list[t->priority],&t->elem);
-  }
-  else {
-    list_insert_ordered (&ready_list, &t->elem, sort_priority_list_less_func, NULL);
-  }
-
+  list_insert_ordered (&ready_list, &t->elem, sort_priority_list_less_func, NULL);
 
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -392,8 +416,8 @@ thread_yield (void)
   if (cur != idle_thread) 
   {
     if(thread_mlfqs) {
-    /* pushing into mlfqs ready queue*/
-      list_push_back(&mlfqs_ready_list.pri_ready_list[cur->priority],&cur->elem);
+    /* pushing into mlfqs ready queue. If pri(elem) == pri(a), goes behind a for round robin*/
+      list_insert_ordered (&ready_list, &cur->elem,sort_priority_list_after_func, NULL);
     }
     else {
       /* pushing into priority queue */
@@ -451,6 +475,16 @@ thread_set_nice (int nice UNUSED)
 {
   /* changed by praveen balireddy */
   thread_current()->nice = nice;
+  struct thread * t = thread_current();
+  update_priority(t,NULL);
+  if(!list_empty(&ready_list))
+  {
+    struct thread* e = list_entry(list_front(&ready_list), struct thread, elem);
+    if(t->priority < e->priority)
+    {
+      thread_yield();
+    }
+  }
 }
 
 /* Returns the current thread's nice value. */
@@ -466,13 +500,19 @@ int
 thread_get_load_avg (void) 
 {
   /* update the arithematic - by praveen balireddy*/
-  return load_avg*100;
+  // printf("Int thread get load avg: %d\n",load_avg);
+  return convert_to_int_round(load_avg*100);
 }
 
 void update_load_avg()
 {
   /* update the arithematic - by praveen balireddy */
-  load_avg = (59/60)*load_avg + (1/60)*mlfqs_ready_list.ready_count;
+  // printf("Int update load avg, load_avg = %d, ready size = %d\n",thread_get_load_avg(),list_size(&ready_list));
+  // if(thread_current() == idle_thread)
+  //   printf("Idle thread\n");
+  load_avg = multiply_fp(convert_to_fp(59)/60,load_avg) 
+    + (convert_to_fp(1)/60)*(thread_current() == idle_thread ? list_size(&ready_list) : list_size(&ready_list)+1);
+  // printf("Int update load avg, after update load_avg = %d\n",thread_get_load_avg());
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -480,7 +520,7 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return convert_to_int_round(thread_current()->recent_cpu*100);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -599,29 +639,11 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-    if(thread_mlfqs) {
-    /* picking the highest priority thread from mlfqs ready queue*/
-      for (int i = PRI_MAX; i >=0; i++)
-      {
-        if(list_empty(&mlfqs_ready_list.pri_ready_list[i]))
-        {
-          continue;
-        }
-        else
-        {
-          return list_entry (list_pop_front (&mlfqs_ready_list.pri_ready_list[i]), struct thread, elem);
-        }
-      }
-      return idle_thread;
-    }
-    else 
-    {
-      /* for priority scheduling */
-      if (list_empty (&ready_list))
-        return idle_thread;
-      else      
-        return list_entry (list_pop_front (&ready_list), struct thread, elem);
-    }  
+  /* for priority scheduling */
+  if (list_empty (&ready_list))
+    return idle_thread;
+  else      
+    return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -635,7 +657,7 @@ next_thread_to_run (void)
    switch_entry() (see switch.S).
 
    It's not safe to call printf() until the thread switch is
-   complete.  In practice that means that printf()s should be
+   complete.  In practice that means thload_avgat printf()s should be
    added at the end of the function.
 
    After this function and its caller returns, the thread switch
