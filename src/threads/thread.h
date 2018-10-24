@@ -179,6 +179,8 @@ bool sort_priority_list_after_func(const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux);
 
-void sort_ready_list();                               
+void sort_ready_list();   
+
+void updateCurrThread();
 
 #endif /* threads/thread.h */

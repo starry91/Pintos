@@ -158,12 +158,24 @@ void update_recent_cpu_and_priority(struct thread* t, void *aux)
 void update_priority(struct thread* t, void *aux)
 {
   t->priority = PRI_MAX - convert_to_int_round(t->recent_cpu/4) - (t->nice/2);
+  if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  else if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
 }
 
 void sort_ready_list()
 {
   list_sort(&ready_list,sort_priority_list_less_func,NULL);
 }
+
+// void updateCurrThread()
+// {
+//   if(!list_empty(&ready_list) && list_entry(list_front(&ready_list), struct thread, elem)->priority > thread_current()->priority)
+//   {
+//     thread_yield();
+//   }
+// }
 /*----------------------------------------------------------end of additions by praveen balireddy --------------------*/
 
 /* Initializes the threading system by transforming the code
@@ -282,7 +294,11 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority, NICE_DEFAULT);
+  if(thread_mlfqs)
+    init_thread (t, name, PRI_MAX, NICE_DEFAULT);
+  else
+    init_thread (t, name, priority, NICE_DEFAULT);
+
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -300,10 +316,13 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  // printf("New thread name: %s\n",t->name);
   /* Add to run queue. */
   thread_unblock (t);
   /* let the new thread run */
-  thread_yield();
+  if(t->priority > thread_current()->priority)
+    thread_yield();
+  // printf("Curr thread name: %s\n",thread_current()->name);
 
   return tid;
 }
@@ -426,8 +445,10 @@ thread_yield (void)
   }
   cur->status = THREAD_READY;
   schedule ();
+  // printf("Hello");
   intr_set_level (old_level);
 }
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -713,6 +734,7 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
+  // printf("Hello");
 }
 
 /* Returns a tid to use for a new thread. */

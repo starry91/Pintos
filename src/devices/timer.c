@@ -215,6 +215,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
 
+  thread_tick();
   /* for mlfqs - by praveen balireddy */
   if(thread_mlfqs) {
     /* increment recent cpu at every tick */
@@ -246,7 +247,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
       }
     }
   }
-  thread_tick();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

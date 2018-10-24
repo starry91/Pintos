@@ -1,0 +1,66 @@
+Team Members:
+Praveen Balireddy (2018201052)
+Amit Tiwari
+
+Implementation Challenges:
+
+1) The first challenge was to understand the code flow/tools and get the existing Pintos working.
+Sol: Read the Stanford documentation to understand the use of each file. Later, started following the function call stack for the boot up process of the OS(from loader to the running of the kernal main)
+(VSCode has a nice feature where you click on a function, it takes you to the function implementation) . Also, set up QEMU, gdb, etc.
+
+
+Pre-emption of threads:
+
+2) What is busy wait?
+Read from google and understood what busy waiting was and why it is bad(wastage of CPU cycles), infinite while loop in this case.
+
+3) How to detect when to wake up a thread?
+Read from stackoverflow, how schedulers actually implement sleeping, ie, calculating the wake up time. Then did the same and put them into a new list (sleeping list). Had to go through the list.h/list.c files to understand how a list_elem is being used to put a thread into multiple queues.
+
+4) How to keep the sleeping threads in the increasing order of wake up time?
+Sol: Created a new struct to store the wake up time and along with the thread pointer  and the list_elem and found a way to insert elements in a sorted order from list.h. Created a comparator function and passed it to the sort function provided by list.h
+
+5) In which part of the code to keep the call to wake up the threads from sleeping?
+Sol: Felt the clock tick is the smallest computation of the time, hence best way was to check after every clock tick if the current tick is greater than the wake up tick of the first element in the sleep list.
+
+Implementation of priority scheduling:
+
+Understood keeping the threads in the ready list in a sorted manner (based on priority) should solve the problem of priority. Used the comparator function from previous part. Also, implemented the set_priority and get priority methods
+
+For locks and semphore the process was straightforward. Again, had to put the waiters queue in sorted manner. Used the same comparator from previous code.
+
+6) For condition variable, also did the same thing, but the test cases failed
+Sol: Put some print statements to debug and then looked at the code more closely to understand what was happening. Understood, a new semaphore_elem was being created each time and each semaphore had a waiters queue. Realised the list_elem was actually being put into the waiters queue of each semaphore, and that there will be only 1 list_elem in the waiters queue of each semaphore_elem. Hence, the idea of keeping the waiters queue of the condition variable fails. 
+Sol: Wrote a comparator which compares the semaphore_elem, based on the priority of the thread in their respective waiters queue. Passed the current thread as AUX to compare when one of the waiter queues is empty.
+
+Advanced Scheduler(MLFQS):
+
+Read and understood the BSD scheduler  computations from the stanford pintos pdf.
+
+7) How to pass the –mlfqs argument to the kernal?
+Sol: Traced the function call stack to understand how arguments are being passed to the kernal and in the process saw that there was already a boolean flag (thread_mlfqs) available in the thread.c file which becomes true when mlfqs argument is passed to the command.
+
+Iteration 1: Using an array of 64 queues, as inserting an element would take less time as we already which queue to be inserted into.
+
+Created a new ready queue which has 64 queues, one for each priority level, modified different parts of the code to use the new queue when the mlfqs flag is true. But in the end while coding the update_priority function for all the threads, realised it was way more complicated, in the sense that the thread needs to be popped from the existing priority queue and put into new queue(need to write custom functions to do these tasks).
+Then, while reading the documentation again, in the FAQ, saw that it was okay to use a single queue instead of 64 queues as long as the functionality is same. Spent some time abstracting how the already modified code would need to be changed and the effort required. Realised, that the existing infrastructure can be used to do the different operations required, hence switched to single queue implementation.
+
+Iteration 2: Using single ready queue
+
+Modified the different parts of the code to use a single ready queue implementation. Wrote custom arithmetic functions to do the different arithmetic operations.
+
+8) mlfqs-load-1 test cases failed. Ran the test case using qemu and found the load was getting way to high in between and in some cases not available.
+Sol: Tried to debug the code using printf() to see at what point it was failing. After may iterations of looked through the code, and comparing my functions with the arithmetic functions from github, found that I forgot to put parenthesis () around the #define macro for the fraction part (1 << 14) and few other mistakes. Changed them and all the test cases (except nice-2 and nice-10) passed.
+
+9) mlfqs-nice-2 & mlfqs-nice-10:
+Spent 2 days trying to debug why they were failing. 
+At first, couldn’t find the .c files for the above 2 test cases in the tests folder unlike other test cases. Hence started looking at the .ck files and the perl code in the mlfqs.pm in the same tests/threads folder. After multiple failed attempts at trying to understand how the perl code worked, tried finding the files where “mlfqs-nice exists” using git grep -n “ mlfqs–nice “. Found that it was present in mlfqs–fair.c . Looked at the code and realised it was what as being used for those test cases. Understood the test case and tried out different out modifying different parts of the code to see if any works(couldn’t get it working, but in the process while putting printf() statements, saw that the priority was going above 67, fixed it by putting an upper and lower bound in my implementations).
+
+NOTE: Might have missed out on other challenges I actually faced during the implementation as I didn’t note them down anywhere while facing them(went with whatever I could remember).
+Also, to trace where the particular function was called, etc, used “git grep -n ‘function_name’ ” most of the time in place of “cscope” tool as I felt it was much more easy. Used gdb at times where there was an assertion error to see the backtrace.  
+
+
+
+
+
+
