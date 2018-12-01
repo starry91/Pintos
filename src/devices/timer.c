@@ -130,9 +130,19 @@ timer_sleep (int64_t ticks)
     PANIC("Failed to allocate memory for sleep queue entry");
   sleep_elem->wake_tick = release_ticks;
   sleep_elem->thread_ptr = cur;
+  // ==sleep_elem->elem = cur->elem;
 
-  list_push_back(&sleep_queue, &sleep_elem->elem);
-  list_sort(&sleep_queue,sleep_queue_list_less_func,NULL);
+
+  // list_push_back(&sleep_queue, &sleep_elem->elem);
+  // list_sort(&sleep_queue,sleep_queue_list_less_func,NULL);
+  // if(list_empty(&sleep_queue))
+  // {
+  //   list_push_back(&sleep_queue, &sleep_elem->elem);  
+  // }
+  // else
+  {
+    list_insert_ordered(&sleep_queue, &sleep_elem->elem, sleep_queue_list_less_func, NULL);
+  }
 
   old_level = intr_disable();
   thread_block();
@@ -226,7 +236,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
       update_load_avg();
       thread_foreach(update_recent_cpu, NULL); 
     }
-    if(timer_ticks()% 4 == 3)
+    if(timer_ticks()% 4 == 0)
     {
       thread_foreach(update_priority, NULL);
       sort_ready_list();

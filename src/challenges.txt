@@ -2,6 +2,77 @@ Team Members:
 Praveen Balireddy (2018201052)
 Amit Tiwari
 
+Modified areas of code:
+
+timer.c:
+timer_interrupt() : Added mechanism to check when to wake up threads and calculation of the load_avg, recent_cpu, etc for mlfqs
+
+Make.vars:
+Added qemu as default simulator
+
+thread.h
+New additions:
+#define NICE_DEFAULT 0                  /* Default nice value - by praveen */
+#define PRI_LEVEL_COUNT 64              /* priority level count - by praveen */
+
+Added function prototypes for fixed point arithematic operations
+
+
+update_load_avg(): Update the system load average
+void update_recent_cpu(struct thread* t, void *aux): Updates the recent cpu for the given thread
+void increment_recent_cpu(struct thread* t): Increments the recent cpu by 1 
+bool sort_priority_list_less_func(const struct list_elem *a,
+                                const struct list_elem *b,
+                                void *aux): Comparator to insert the elements in sorted order towards the head
+
+bool sort_priority_list_less_func(const struct list_elem *a,
+                                const struct list_elem *b,
+                                void *aux): Comparator to insert the elements int sorted order towards the tail
+
+void sort_ready_list(): to sort the ready list, called in the timer interrupt
+
+Modifications:
+struct thread:
+int nice;                           /*Nice - by praveen */
+int recent_cpu;                     /*recent cpu - by praveen */
+
+
+thread.c
+New additions:
+static int load_avg: to store the system wide load average
+
+void load_avg_init(void): To initialize the system wide load average at kernal start
+
+Modifications:
+thread_init(): Added a call to load_avg_init() when run in mlfqs mode
+
+tid_t
+thread_create (const char *name, int priority,
+               thread_func *function, void *aux): Added call to thread_yield() in the end to schedule the thread with highest priority
+
+void
+thread_unblock (struct thread *t): Added a mechanism to insert threads in a sorted way into the ready queue
+
+void
+thread_yield (void): inserting threads in a sorted manner into the ready list
+
+void
+thread_set_priority (int new_priority): setting the priority of the given thread, yields if it is not the highest priority among the ready list
+
+int
+thread_get_priority (void): Returns the current thread's priority
+
+void
+thread_set_nice (int nice UNUSED): Sets the current thread's nice value
+
+int
+thread_get_nice (void): Returns the current thread's nice value
+
+int
+thread_get_load_avg (void): Returns 100 times the system load average
+
+
+
 Implementation Challenges:
 
 1) The first challenge was to understand the code flow/tools and get the existing Pintos working.
